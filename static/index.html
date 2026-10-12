@@ -61,7 +61,7 @@
             border: 1px solid #E0E0E0;
             border-radius: 8px;
             box-sizing: border-box;
-            font-size: 16px; /* 防止 iOS 自動縮放 */
+            font-size: 16px;
             transition: border-color 0.2s;
             -webkit-appearance: none;
         }
@@ -174,7 +174,7 @@
             </div>
 
             <div class="form-group">
-                <label>成交股數 (買進填正，賣出填負)</label>
+                <label>成交股數 (買進請填正數，賣出填負數)</label>
                 <input type="number" id="shares" placeholder="例如: 1000" required>
             </div>
 
@@ -192,23 +192,19 @@
         document.getElementById('trade_date').valueAsDate = new Date();
 
         async function submitData() {
-            // 1. 抓取所有表單資料 (修正了 ID 對不上的問題)
             const tradeDate = document.getElementById('trade_date').value;
             const tradeType = document.querySelector('input[name="trade_type"]:checked').value;
             const stockCode = document.getElementById('stock_code').value.trim();
             const shares = document.getElementById('shares').value;
             const price = document.getElementById('price').value;
 
-            // 2. 防呆檢查
             if (!tradeDate || !stockCode || !shares || !price) {
                 alert("請填寫所有欄位！");
                 return;
             }
 
-            // 顯示載入中遮罩，防止重複點擊
             document.getElementById('loader').style.display = 'flex';
 
-            // 3. 打包成後端 (core_engine) 需要的格式
             const data = {
                 date: tradeDate,
                 type: tradeType,
@@ -218,23 +214,17 @@
             };
 
             try {
-                // 4. 傳送到後端 API
                 const response = await fetch('/api/add_transaction', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
                 if (response.ok) {
                     alert("✅ 新增成功！請查看 LINE 聊天室的推播通知。");
-                    
-                    // 如果是在 LINE 裡面開啟的，送出成功後自動關閉視窗
                     if (liff.isInClient()) {
                         liff.closeWindow();
                     } else {
-                        // 如果是在一般瀏覽器測試，清空表單方便下一筆輸入
                         document.getElementById('stock_code').value = '';
                         document.getElementById('shares').value = '';
                         document.getElementById('price').value = '';
@@ -246,7 +236,6 @@
                 console.error("Error:", error);
                 alert("連線發生錯誤，請稍後再試！");
             } finally {
-                // 關閉載入中遮罩
                 document.getElementById('loader').style.display = 'none';
             }
         }
