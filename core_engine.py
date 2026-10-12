@@ -6,14 +6,25 @@ def init_test_db():
     conn = sqlite3.connect('portfolio_new.db')
     cursor = conn.cursor()
     
-    # 🌟 修復 Bug: 補上引擎計算需要的 fee_discount 與 margin_rate
+    # 1. 建立基本的 Users 表格
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Users (
-            user_id TEXT PRIMARY KEY,
-            fee_discount REAL DEFAULT 1.0,
-            margin_rate REAL DEFAULT 0.06
+            user_id TEXT PRIMARY KEY
         )
     ''')
+    
+    # 2. 🌟 自動升級資料庫：如果發現是用舊的資料庫檔案，自動幫它打補丁補上新欄位
+    try:
+        cursor.execute("ALTER TABLE Users ADD COLUMN fee_discount REAL DEFAULT 1.0")
+    except sqlite3.OperationalError:
+        pass # 若欄位已存在，則忽略錯誤繼續執行
+        
+    try:
+        cursor.execute("ALTER TABLE Users ADD COLUMN margin_rate REAL DEFAULT 0.06")
+    except sqlite3.OperationalError:
+        pass
+
+    # 3. 建立交易紀錄表格
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,24 +44,31 @@ def init_test_db():
 def fetch_current_prices(stock_codes):
     prices = {}
     if not stock_codes: return prices
-    # 自動補上 .TW 給 yfinance
-    tickers = " ".join([f"{c}.TW" if not c.endswith(('.TW','.TWO')) else c for c in stock_codes])
-    data = yf.download(tickers, period="1d", progress=False)
     
-    for code in stock_codes:
-        try:
-            ticker_str = f"{code}.TW" if not code.endswith(('.TW','.TWO')) else code
-            if len(stock_codes) == 1:
-                prices[code] = float(data['Close'].iloc[0])
-            else:
-                prices[code] = float(data['Close'][ticker_str].iloc[0])
-        except:
-            pass # 若 API 抓不到，保留空值，後續會自動使用買進價
+    tickers = " ".join([f"{c}.TW" if not c.endswith(('.TW','.TWO')) else c for c in stock_codes])
+    
+    # 🌟 防呆機制：防止週末或下市股票導致 yfinance 抓不到資料崩潰
+    try:
+        data = yf.download(tickers, period="1d", progress=False)
+        for code in stock_codes:
+            try:
+                ticker_str = f"{code}.TW" if not code.endswith(('.TW','.TWO')) else code
+                if len(stock_codes) == 1:
+                    if not data.empty and 'Close' in data:
+                        prices[code] = float(data['Close'].iloc[-1])
+                else:
+                    if not data.empty and 'Close' in data and ticker_str in data['Close']:
+                        prices[code] = float(data['Close'][ticker_str].iloc[-1])
+            except Exception:
+                pass # 單一股票錯誤不影響其他股票
+    except Exception as e:
+        print("yfinance 抓取發生錯誤:", e)
+        
     return prices
 
 def calculate_portfolio(conn, user_id):
     cursor = conn.cursor()
-    # 🌟 修復 Bug: 防呆檢查，若找不到該用戶的設定，則給予預設值
+    
     cursor.execute("SELECT fee_discount, margin_rate FROM Users WHERE user_id = ?", (user_id,))
     user_row = cursor.fetchone()
     if user_row:
@@ -70,9 +88,15 @@ def calculate_portfolio(conn, user_id):
     
     for code, acc_type, shares, buy_price, trade_date in trades:
         cur_price = current_prices.get(code, buy_price)
-        days_held = max(1, (today - datetime.strptime(trade_date, "%Y-%m-%d")).days)
-        market_value = cur_price * shares
         
+        # 計算持有天數
+        try:
+            trade_dt = datetime.strptime(trade_date, "%Y-%m-%d")
+        except ValueError:
+            trade_dt = today
+        days_held = max(1, (today - trade_dt).days)
+        
+        market_value = cur_price * shares
         sell_fee = market_value * 0.001425 * discount
         sell_tax = market_value * 0.003
         accrued_fees = sell_fee + sell_tax
@@ -96,9 +120,13 @@ def calculate_portfolio(conn, user_id):
         summary["負債"] += liability
         
         portfolio_details.append({
-            "代號": str(code).split('.')[0], "類型": acc_type, 
-            "股數": shares, "現價": cur_price, "淨值": net_value
+            "代號": str(code).split('.')[0], 
+            "類型": acc_type, 
+            "股數": shares, 
+            "現價": cur_price, 
+            "淨值": net_value
         })
+        
     return summary, portfolio_details
 
 def insert_trade_record(conn, user_id, trade_date, trade_type, stock_code, shares, price):
