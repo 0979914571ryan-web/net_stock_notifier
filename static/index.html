@@ -188,97 +188,52 @@
     </div>
 
     <script>
-        // 設定今天的日期為預設值
-        document.getElementById('trade_date').valueAsDate = new Date();
+    // 假設你有一個按鈕的 id 是 submitBtn，表單輸入框有 stock_id, shares, price
+    async function submitTransaction() {
+        // 抓取表單資料
+        const stockId = document.getElementById('stock_id').value;
+        const shares = document.getElementById('shares').value;
+        const price = document.getElementById('price').value;
 
-        // ⚠️ 這裡稍後要填入你在 LINE Developers 申請的 LIFF ID
-        const LIFF_ID = "2011983127-D3tJavtb"; 
-
-        async function initializeLiff() {
-            try {
-                await liff.init({ liffId: LIFF_ID });
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                }
-            } catch (err) {
-                console.error("LIFF 初始化失敗:", err);
-            }
+        // 簡單的防呆檢查
+        if (!stockId || !shares || !price) {
+            alert("請填寫所有欄位！");
+            return;
         }
 
-        // 網頁載入時初始化 LIFF
-        // initializeLiff(); 
+        const data = {
+            stock_id: stockId,
+            shares: parseFloat(shares),
+            price: parseFloat(price)
+        };
 
-        async function submitData() {
-            // 取得表單資料
-            const tradeDate = document.getElementById('trade_date').value;
-            const tradeType = document.querySelector('input[name="trade_type"]:checked').value;
-            const stockCode = document.getElementById('stock_code').value;
-            const shares = document.getElementById('shares').value;
-            const price = document.getElementById('price').value;
+        try {
+            // 關鍵在這裡！網址必須是 '/api/add_transaction' (最前面一定要有斜線)
+            // 絕對不可以寫死成 ngrok 或是 https://...
+            const response = await fetch('/api/add_transaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
 
-            // 簡易表單驗證
-            if(!tradeDate || !stockCode || !shares || !price) {
-                alert("請填寫完整資訊！");
-                return;
-            }
-
-            document.getElementById('loader').style.display = 'flex';
-
-            // 取得使用者 ID (如果在 LIFF 環境中)
-            let userId = "U_TEST_123";
-            try {
-                if (liff.isLoggedIn()) {
-                    const profile = await liff.getProfile();
-                    userId = profile.userId;
-                }
-            } catch(e) {
-                console.log("未取得 LINE Profile，使用預設測試 ID");
-            }
-
-            const payload = {
-                user_id: userId,
-                date: tradeDate,
-                type: tradeType,
-                code: stockCode,
-                shares: parseInt(shares),
-                price: parseFloat(price)
-            };
-
-            // 傳送資料到我們的 FastAPI 後端
-            try {
-                // 因為網頁跟 API 在同一個伺服器，可以使用相對路徑
-                const response = await fetch('/api/trade', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-
+            if (response.ok) {
                 const result = await response.json();
-                
-                // 更嚴謹的判斷：不僅 HTTP 連線要成功，後端回傳的 status 也要是 success
-                if(response.ok && result.status === "success") {
-                    alert("✅ " + result.message);
-                    // 關閉 LIFF 視窗
-                    if (liff.isInClient()) {
-                        liff.closeWindow();
-                    } else {
-                        // 重置表單
-                        document.getElementById('tradeForm').reset();
-                        document.getElementById('trade_date').valueAsDate = new Date();
-                    }
-                } else {
-                    // 如果後端有抓到錯誤，就會把原因顯示在 result.detail 中
-                    alert("❌ 發生錯誤: " + (result.detail || result.message || "未知錯誤"));
-                }
-            } catch (error) {
-                alert("❌ 連線後端失敗！");
-                console.error(error);
-            } finally {
-                document.getElementById('loader').style.display = 'none';
+                alert("新增成功！請查看 LINE 通知。");
+                // 可以把表單清空
+                document.getElementById('stock_id').value = '';
+                document.getElementById('shares').value = '';
+                document.getElementById('price').value = '';
+            } else {
+                // 如果後端回傳 404，就會跑到這裡
+                alert("發生錯誤：伺服器找不到該路徑 (Not Found)。請確認網址！");
             }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("連線發生錯誤，請稍後再試！");
         }
+    }
     </script>
 </body>
 </html>
