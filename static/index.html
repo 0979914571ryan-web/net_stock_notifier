@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>新增交易紀錄</title>
+    <!-- 引入 LINE LIFF SDK -->
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        :root {
+            --primary-color: #1DB446;
+            --danger-color: #E74C3C;
+            --bg-color: #F8F9FA;
+            --card-bg: #FFFFFF;
+            --text-main: #333333;
+            --text-muted: #888888;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-main);
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 24px;
+            font-size: 22px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px; /* 防止 iOS 自動縮放 */
+            transition: border-color 0.2s;
+            -webkit-appearance: none;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        /* 自訂 Radio Button (現股/融資) */
+        .radio-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .radio-option {
+            flex: 1;
+        }
+
+        .radio-option input[type="radio"] {
+            display: none;
+        }
+
+        .radio-label {
+            display: block;
+            text-align: center;
+            padding: 12px;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .radio-option input[type="radio"]:checked + .radio-label.cash {
+            background-color: #E8F6EF;
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .radio-option input[type="radio"]:checked + .radio-label.margin {
+            background-color: #FDECEA;
+            border-color: var(--danger-color);
+            color: var(--danger-color);
+        }
+
+        button.submit-btn {
+            width: 100%;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+        }
+
+        button.submit-btn:active {
+            background-color: #189839;
+        }
+
+        /* 載入中遮罩 */
+        #loader {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">處理中，請稍候...</div>
+
+    <div class="container">
+        <h2>📝 新增交易紀錄</h2>
+        <form id="tradeForm">
+            
+            <div class="form-group">
+                <label>交易日期</label>
+                <input type="date" id="trade_date" required>
+            </div>
+
+            <div class="form-group">
+                <label>交易類型</label>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="trade_type" value="現股" checked>
+                        <div class="radio-label cash">現股</div>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="trade_type" value="融資">
+                        <div class="radio-label margin">融資</div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>股票代號</label>
+                <input type="text" id="stock_code" placeholder="例如: 2330" pattern="[0-9A-Za-z]+" required>
+            </div>
+
+            <div class="form-group">
+                <label>成交股數 (買進請填正數，賣出填負數)</label>
+                <input type="number" id="shares" placeholder="例如: 1000" required>
+            </div>
+
+            <div class="form-group">
+                <label>成交單價 (元)</label>
+                <input type="number" id="price" step="0.01" placeholder="例如: 500.5" required>
+            </div>
+
+            <button type="button" class="submit-btn" onclick="submitData()">確認送出</button>
+        </form>
+    </div>
+
+    <script>
+        // 設定今天的日期為預設值
+        document.getElementById('trade_date').valueAsDate = new Date();
+
+        // ⚠️ 這裡稍後要填入你在 LINE Developers 申請的 LIFF ID
+        const LIFF_ID = "2011983127-D3tJavtb"; 
+
+        async function initializeLiff() {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                }
+            } catch (err) {
+                console.error("LIFF 初始化失敗:", err);
+            }
+        }
+
+        // 網頁載入時初始化 LIFF
+        // initializeLiff(); 
+
+        async function submitData() {
+            // 取得表單資料
+            const tradeDate = document.getElementById('trade_date').value;
+            const tradeType = document.querySelector('input[name="trade_type"]:checked').value;
+            const stockCode = document.getElementById('stock_code').value;
+            const shares = document.getElementById('shares').value;
+            const price = document.getElementById('price').value;
+
+            // 簡易表單驗證
+            if(!tradeDate || !stockCode || !shares || !price) {
+                alert("請填寫完整資訊！");
+                return;
+            }
+
+            document.getElementById('loader').style.display = 'flex';
+
+            // 取得使用者 ID (如果在 LIFF 環境中)
+            let userId = "U_TEST_123";
+            try {
+                if (liff.isLoggedIn()) {
+                    const profile = await liff.getProfile();
+                    userId = profile.userId;
+                }
+            } catch(e) {
+                console.log("未取得 LINE Profile，使用預設測試 ID");
+            }
+
+            const payload = {
+                user_id: userId,
+                date: tradeDate,
+                type: tradeType,
+                code: stockCode,
+                shares: parseInt(shares),
+                price: parseFloat(price)
+            };
+
+            // 傳送資料到我們的 FastAPI 後端
+            try {
+                // 因為網頁跟 API 在同一個伺服器，可以使用相對路徑
+                const response = await fetch('/api/trade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                
+                // 更嚴謹的判斷：不僅 HTTP 連線要成功，後端回傳的 status 也要是 success
+                if(response.ok && result.status === "success") {
+                    alert("✅ " + result.message);
+                    // 關閉 LIFF 視窗
+                    if (liff.isInClient()) {
+                        liff.closeWindow();
+                    } else {
+                        // 重置表單
+                        document.getElementById('tradeForm').reset();
+                        document.getElementById('trade_date').valueAsDate = new Date();
+                    }
+                } else {
+                    // 如果後端有抓到錯誤，就會把原因顯示在 result.detail 中
+                    alert("❌ 發生錯誤: " + (result.detail || result.message || "未知錯誤"));
+                }
+            } catch (error) {
+                alert("❌ 連線後端失敗！");
+                console.error(error);
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
